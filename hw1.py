@@ -54,7 +54,11 @@ def image_data_url(path: Path) -> str:
 
 
 def build_chain() -> Any:
-    """Create and return your LangChain chain once."""
+    """Create and return your LangChain chain once.
+
+    Uses the vision-capable DeepSeek Flash model named
+    `deepseek-v4-flash-vision-exp`.
+    """
     llm = ChatDeepSeek(
         model="deepseek-v4-flash-vision-exp",
         temperature=0.0,
@@ -67,10 +71,10 @@ def build_chain() -> Any:
         "- subtotal: the SUBTOTAL amount BEFORE the ROUNDING adjustment. "
         "If there is no SUBTOTAL line, use the net amount after all discounts but before rounding.\n"
         "- discount_total: the sum of the absolute values of ALL discount/promotion/coupon/member/app/percentage-off lines. "
-        "This must be a positive number. Do NOT include ROUNDING.\n"
+        "This must be a positive number. Do NOT include the ROUNDING adjustment.\n"
         "- original_amount: subtotal + discount_total. Do NOT add back ROUNDING.\n\n"
         "Return ONLY one valid JSON object, without markdown or extra text:\n"
-        '{"final_total": 102.30, "subtotal": 102.31, "discount_total": 5.39, "original_amount": 107.70}'
+        '{{"final_total": 102.30, "subtotal": 102.31, "discount_total": 5.39, "original_amount": 107.70}}'
     )
 
     prompt = ChatPromptTemplate.from_messages(
@@ -79,8 +83,14 @@ def build_chain() -> Any:
             (
                 "human",
                 [
-                    {"type": "text", "text": "Extract the receipt amounts. Return only JSON."},
-                    {"type": "image_url", "image_url": {"url": "{image_url}"}},
+                    {
+                        "type": "text",
+                        "text": "Extract the receipt amounts. Return only JSON.",
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": "{image_url}"},
+                    },
                 ],
             ),
         ]
