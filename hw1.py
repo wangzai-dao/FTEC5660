@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """FTEC5660 HW1 student starter: build a chain for supermarket receipts."""
 
@@ -13,8 +14,6 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_deepseek import ChatDeepSeek
 
 QUERY_1 = "How much money did I spend in total for these bills?"
 QUERY_2 = "How much would I have had to pay without the discount?"
@@ -55,11 +54,7 @@ def image_data_url(path: Path) -> str:
 
 
 def build_chain() -> Any:
-    """Create and return your LangChain chain once.
-
-    Uses the vision-capable DeepSeek Flash model named
-    `deepseek-v4-flash-vision-exp`.
-    """
+    """Create and return your LangChain chain once."""
     llm = ChatDeepSeek(
         model="deepseek-v4-flash-vision-exp",
         temperature=0.0,
@@ -67,13 +62,15 @@ def build_chain() -> Any:
 
     system_prompt = (
         "You are an expert financial assistant processing supermarket receipts.\n"
-        "Analyze the receipt image carefully:\n"
-        "1. 'amount_spent': The final total payment amount AFTER any rounding adjustment line.\n"
-        "2. 'original_amount': The sum of original positive item prices BEFORE discounts. "
-        "Add back all promotions, coupons, member discounts, app discounts, "
-        "and percentage discounts, but DO NOT add back rounding adjustments.\n\n"
-        "Respond ONLY with a valid JSON object strictly matching this format:\n"
-        '{"amount_spent": 12.34, "original_amount": 15.00}'
+        "Read the receipt image carefully and extract the following fields.\n"
+        "- final_total: the final payment amount AFTER the ROUNDING adjustment line.\n"
+        "- subtotal: the SUBTOTAL amount BEFORE the ROUNDING adjustment. "
+        "If there is no SUBTOTAL line, use the net amount after all discounts but before rounding.\n"
+        "- discount_total: the sum of the absolute values of ALL discount/promotion/coupon/member/app/percentage-off lines. "
+        "This must be a positive number. Do NOT include ROUNDING.\n"
+        "- original_amount: subtotal + discount_total. Do NOT add back ROUNDING.\n\n"
+        "Return ONLY one valid JSON object, without markdown or extra text:\n"
+        '{"final_total": 102.30, "subtotal": 102.31, "discount_total": 5.39, "original_amount": 107.70}'
     )
 
     prompt = ChatPromptTemplate.from_messages(
@@ -82,14 +79,8 @@ def build_chain() -> Any:
             (
                 "human",
                 [
-                    {
-                        "type": "text",
-                        "text": "Extract amounts from this receipt image.",
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": "{image_url}"},
-                    },
+                    {"type": "text", "text": "Extract the receipt amounts. Return only JSON."},
+                    {"type": "image_url", "image_url": {"url": "{image_url}"}},
                 ],
             ),
         ]
@@ -103,41 +94,48 @@ def answer_queries(chain: Any, images: list[Path]) -> dict[str, Any]:
     if not images:
         return {QUERY_1: "HK$0.00", QUERY_2: "HK$0.00"}
 
-    # 使用 chain.batch 对多张小票并发请求
-    batch_inputs = [{"image_url": image_data_url(img_path)} for img_path in images]
-    results = chain.batch(batch_inputs)
+    def to_decimal(value: Any) -> Decimal:
+        if value is None:
+            return Decimal("0.00")
+        text = str(value).replace(",", "").replace("HK$", "").replace("$", "").strip()
+        return Decimal(text)
 
     total_spent = Decimal("0.00")
     total_original = Decimal("0.00")
 
-    for res in results:
-        text = response_text(res)
-        try:
-            cleaned_text = re.sub(r"```(?:json)?|```", "", text).strip()
-            data = json.loads(cleaned_text)
+    for img_path in images:
+        result = chain.invoke({"image_url": image_data_url(img_path)})
+        text = response_text(result)
 
-            spent = Decimal(str(data.get("amount_spent", 0)))
-            original = Decimal(str(data.get("original_amount", 0)))
+        try:
+            cleaned = re.sub(r"```(?:json)?|```", "", text).strip()
+            data = json.loads(cleaned)
+
+            spent = to_decimal(data.get("final_total", data.get("amount_spent")))
+            if "subtotal" in data and "discount_total" in data:
+                original = to_decimal(data["subtotal"]) + to_decimal(data["discount_total"])
+            else:
+                original = to_decimal(data.get("original_amount"))
 
             total_spent += spent
             total_original += original
-        except (json.JSONDecodeError, InvalidOperation, TypeError):
+        except (json.JSONDecodeError, InvalidOperation, TypeError, ValueError):
             matches = _MONEY_RE.findall(text)
             if matches:
-                total_spent += Decimal(matches[0].replace(",", ""))
+                try:
+                    total_spent += to_decimal(matches[0])
+                except InvalidOperation:
+                    pass
+                if len(matches) >= 2:
+                    try:
+                        total_original += to_decimal(matches[1])
+                    except InvalidOperation:
+                        pass
 
     return {
         QUERY_1: f"HK${total_spent.quantize(Decimal('0.01')):.2f}",
         QUERY_2: f"HK${total_original.quantize(Decimal('0.01')):.2f}",
     }
-
-
-# Everything below is provided runner/scoring code. No edits are needed.
-
-_MONEY_RE = re.compile(
-    r"(?<![\w.])(?:HK\$|\$)?\s*(-?\d[\d,]*(?:\.\d+)?)(?![\w.])",
-    re.IGNORECASE,
-)
 
 
 def response_text(value: Any) -> str:
