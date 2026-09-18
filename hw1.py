@@ -14,6 +14,8 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_deepseek import ChatDeepSeek
 
 QUERY_1 = "How much money did I spend in total for these bills?"
 QUERY_2 = "How much would I have had to pay without the discount?"
