@@ -148,7 +148,10 @@ def answer_queries(chain: Any, images: list[Path]) -> dict[str, Any]:
         QUERY_1: f"HK${total_spent.quantize(Decimal('0.01')):.2f}",
         QUERY_2: f"HK${total_original.quantize(Decimal('0.01')):.2f}",
     }
-
+_MONEY_RE = re.compile(
+    r"(?<![\w.])(?:HK\$|\$)?\s*(-?\d[\d,]*(?:\.\d+)?)(?![\w.])",
+    re.IGNORECASE,
+)
 
 def response_text(value: Any) -> str:
     """Convert common LangChain response shapes to text for results.csv."""
