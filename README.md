@@ -50,4 +50,4 @@ homework runner.
 
 ## Homework 1 solution: 
 > to students: please fill your solution description here.
-
+The chain is built as ChatPromptTemplate | ChatDeepSeek. The prompt contains a system message and a human message. The system message sets the model as a financial receipt assistant, defines the target fields (final_total, subtotal, discount_total, original_amount), and requires a JSON-only response. The human message is multimodal: it includes a short text instruction and an image block whose URL is filled by the {image_url} template variable with a base64 data URL. The model is deepseek-v4-flash-vision-exp with temperature=0.0. The only input variable is image_url, and the chain returns an AIMessage containing the JSON output.
